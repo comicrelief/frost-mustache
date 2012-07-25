@@ -8,7 +8,6 @@
  * @license    http://www.opensource.org/licenses/bsd-license.php New BSD License
  */
 
-/** @namespace */
 namespace Phly\Mustache;
 
 /**
@@ -23,20 +22,28 @@ namespace Phly\Mustache;
 class Renderer
 {
     /**
+     * The Mustache manager
      * @var Mustache
      */
     protected $manager;
 
-    /** @var array Array of registered pragmas */
+    /** 
+     * Array of registered pragmas
+     * @var array
+     */
     protected $pragmas = array();
 
-    /** @var Closure Callback for escaping variable content */
+    /** 
+     * Callback for escaping variable content
+     * @var Closure
+     */
     protected $escaper;
 
-    /** @var array List of pragmas invoked by current template */
+    /** 
+     * List of pragmas invoked by current template
+     * @var array
+     */
     protected $invokedPragmas = array();
-    
-    protected $defaultPragmas = array();
 
     /**
      * Set mustache manager
@@ -67,6 +74,7 @@ class Renderer
      * 
      * @param  array $tokens 
      * @param  mixed $view 
+     * @param  array|null $partials
      * @return string
      */
     public function render(array $tokens, $view, array $partials = null)
@@ -87,7 +95,7 @@ class Renderer
         $rendered = '';
         foreach ($tokens as $token) {
             list($type, $data) = $token;
-            if (($value = $this->handlePragmas($type, $data, $view)) !== null) {
+            if ($value = $this->handlePragmas($type, $data, $view)) {
                 $rendered .= $value;
                 continue;
             }
@@ -143,7 +151,7 @@ class Renderer
                             $rendered .= $renderedSection;
                             break;
                         }
-                    } elseif (is_callable($section) && is_object($section)) { // ensure simple php functions are not called (i.e. our friend "max")
+                    } elseif (is_callable($section) && $this->isValidCallback($section)) {
                         // Higher order section
                         // Execute the callback, passing it the section's template 
                         // string, as well as a renderer lambda.
@@ -188,6 +196,13 @@ class Renderer
                     $rendered .= $this->render($data['content'], $view);
                     $this->registerPragmas($pragmas);
                     break;
+                case Lexer::TOKEN_PLACEHOLDER:
+                    if ($inLoop) {
+                        // In a loop, with scalar values; skip
+                        break;
+                    }
+                    $rendered .= $this->render($data['content'], $view);
+                    break;
                 case Lexer::TOKEN_PARTIAL:
                     if ($inLoop) {
                         // In a loop, with scalar values; skip
@@ -206,7 +221,7 @@ class Renderer
                                 $partialTokens = $manager->tokenize($data['partial']);
                                 $rendered .= $this->render($partialTokens, $view);
                             } else {
-                                throw new Exception\InvalidPartialException('Unable to resolve partial "' . $data['partial'] . '"');
+                                throw new Exception\InvalidPartialsException('Unable to resolve partial "' . $data['partial'] . '"');
                             }
                         }
                         $this->registerPragmas($pragmas);
@@ -351,18 +366,49 @@ class Renderer
         if (is_scalar($view)) {
             return '';
         }
+
+        if (strpos($key, '.')) {
+            return $this->getDotValue($key, $view);
+        }
+
         if (is_object($view)) {
             if (method_exists($view, $key)) {
                 return call_user_func(array($view, $key));
-            } else if (isset($view->$key)) {
+            } elseif (isset($view->$key)) {
                 return $view->$key;
             }
             return '';
         }
         if (isset($view[$key])) {
+            if (is_callable($view[$key]) && $this->isValidCallback($view[$key])) {
+                return call_user_func($view[$key]);
+            }
             return $view[$key];
         } 
         return '';
+    }
+
+    /**
+     * De-reference a "dot value"
+     *
+     * A dot value indicates a variable nested in a data structure
+     * in the view object.
+     * 
+     * @param  string $key 
+     * @param  mixed $view 
+     * @return mixed
+     */
+    protected function getDotValue($key, $view)
+    {
+        list($first, $second) = explode('.', $key, 2);
+
+        $value = $this->getValue($first, $view);
+        if (is_scalar($value)) {
+            // To de-reference, we need a data set, not scalar data
+            return '';
+        }
+
+        return $this->getValue($second, $value);
     }
 
     /**
@@ -386,30 +432,11 @@ class Renderer
      * @param  array $definition 
      * @return void
      */
-    public function registerDefaultPragma($pragma, $options = array())
-    {
-        $name = $pragma;
-        if (!$this->hasPragma($name)) {
-            throw new Exception\UnregisteredPragmaException('No handler for pragma "' . $name . '" registered; cannot proceed rendering');
-        }
-        $this->defaultPragmas[$name] = $options;
-        $this->invokedPragmas[$name] = $options;
-    }
-
-    /**
-     * Register a pragma for the current rendering session
-     * 
-     * @param  array $definition 
-     * @return void
-     */
     protected function registerPragma(array $definition)
     {
         $name = $definition['pragma'];
         if (!$this->hasPragma($name)) {
             throw new Exception\UnregisteredPragmaException('No handler for pragma "' . $name . '" registered; cannot proceed rendering');
-        }
-        if (isset($this->invokedPragmas[$name])) {
-            unset($this->invokedPragmas[$name]);
         }
         $this->invokedPragmas[$name] = $definition['options'];
     }
@@ -432,7 +459,7 @@ class Renderer
      */
     protected function clearPragmas()
     {
-        $this->invokedPragmas = $this->defaultPragmas;
+        $this->invokedPragmas = array();
     }
 
     /**
@@ -455,11 +482,36 @@ class Renderer
         foreach ($this->invokedPragmas as $name => $options) {
             if (null !== ($handler = $this->getPragma($name))) {
                 if ($handler->handlesToken($token)) {
-                    if (($value = $handler->handle($token, $data, $view, $options)) !== null) {
+                    if ($value = $handler->handle($token, $data, $view, $options)) {
                         return $value;
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Is the callback provided valid?
+     * 
+     * @param  callback $callback 
+     * @return bool
+     */
+    protected function isValidCallback($callback)
+    {
+        // For security purposes, we don't want to call anything that isn't
+        // an object callback
+        if (is_string($callback)) {
+            return false;
+        }
+
+        if (is_array($callback)) {
+            $target = array_shift($callback);
+            if (!is_object($target)) {
+                return false;
+            }
+        }
+
+        // Object callback -- always okay
+        return true;
     }
 }

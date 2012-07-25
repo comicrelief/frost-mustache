@@ -9,11 +9,10 @@
  * @license    http://www.opensource.org/licenses/bsd-license.php New BSD License
  */
 
-/** @namespace */
 namespace Phly\Mustache\Pragma;
 
-use Phly\Mustache\Mustache,
-    Phly\Mustache\Lexer;
+use Phly\Mustache\Mustache;
+use Phly\Mustache\Lexer;
 
 /**
  * SUB-VIEWS pragma
@@ -79,13 +78,24 @@ use Phly\Mustache\Mustache,
  */
 class SubViews extends AbstractPragma
 {
+    /**
+     * Name of this pragma
+     * @var string
+     */
     protected $name = 'SUB-VIEWS';
 
+    /**
+     * Tokens this pragma handles
+     * @var array
+     */
     protected $tokensHandled = array(
         Lexer::TOKEN_VARIABLE,
     );
 
-    /** @var Mustache */
+    /** 
+     * Mustache manager
+     * @var Mustache
+     */
     protected $manager;
 
     /**
@@ -139,13 +149,10 @@ class SubViews extends AbstractPragma
      */
     public function handle($token, $data, $view, array $options)
     {
-        // If the view doesn't have a value for this item, nothing to do
-        if (!is_array($view) || !isset($view[$data])) {
-            return;
-        }
+        $subView = $this->getValue($data, $view);
 
         // If the view value is not a SubView, we can't handle it here
-        if (!$view[$data] instanceof SubView) {
+        if (!$subView instanceof SubView) {
             return;
         }
 
@@ -153,8 +160,6 @@ class SubViews extends AbstractPragma
         if (null === ($manager = $this->getManager())) {
             return;
         }
-
-        $subView = $view[$data];
 
         // Get template
         $template = $subView->getTemplate();
@@ -167,5 +172,35 @@ class SubViews extends AbstractPragma
 
         // Render sub view and return it
         return $manager->render($template, $localView);
+    }
+
+    /**
+     * Get the value represented by the key $data from the $view
+     *
+     * Returns boolean false if unable to retrieve the value.
+     * 
+     * @param  string $data 
+     * @param  mixed $view 
+     * @return false|mixed
+     */
+    protected function getValue($data, $view)
+    {
+        if (is_scalar($view)) {
+            return false;
+        }
+
+        if (is_array($view) || $view instanceof ArrayAccess) {
+            if (!isset($view[$data])) {
+                return false;
+            }
+            return $view[$data];
+        }
+
+        if (is_object($view)) {
+            if (!isset($view->{$data})) {
+                return false;
+            }
+            return $view->{$data};
+        }
     }
 }

@@ -202,7 +202,7 @@ class Mustache
             return $lexer->compile($template);
         }
 
-        if (array_key_exists($template, $this->cachedTemplates)
+        if (isset($this->cachedTemplates[$template])
             && is_array($this->cachedTemplates[$template])
         ) {
             return $this->cachedTemplates[$template];
@@ -239,7 +239,7 @@ class Mustache
      * @param  array $tokens 
      * @return Mustache
      */
-    public function restoreTokens(array $tokens)
+    public function restoreTokens($tokens)
     {
         $this->cachedTemplates = $tokens;
         return $this;

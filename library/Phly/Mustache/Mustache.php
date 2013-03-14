@@ -258,7 +258,9 @@ class Mustache
             $file = $path . DIRECTORY_SEPARATOR . $template . $this->getSuffix();
             if (file_exists($file)) {
                 $content = file_get_contents($file);
-                $this->cachedTemplates[$template] = $content;
+                // don't cache the raw page, as it may load unintentionally
+                // on race-conditions
+                // $this->cachedTemplates[$template] = $content;
                 return $content;
             }
         }

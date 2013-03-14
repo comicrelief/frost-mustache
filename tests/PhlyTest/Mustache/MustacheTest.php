@@ -337,7 +337,7 @@ EOT;
     {
         $test = $this->mustache->render('template-with-comments', array());
         $expected =<<<EOT
-First line 
+First line
 Second line
 
 Third line
@@ -461,7 +461,7 @@ EOT;
         $view = $this->getRecursiveView();
         $test = $this->mustache->render('crazy_recursive', $view);
         foreach(range(1, 6) as $content) {
-            $this->assertEquals(1, substr_count($test, $content));
+            $this->assertEquals(1, substr_count($test, $content), 'Content: ' . $test);
         }
     }
 
@@ -616,44 +616,6 @@ EOT;
         $view->content = 'This is the content';
         $test = $this->mustache->render('issue-5', $view);
         $this->assertEquals('This is the content', trim($test));
-    }
-
-    /**
-     * @group issue-6
-     */
-    public function testUnderstandsHierarchicalTemplates()
-    {
-        $view = new stdClass;
-        $view->username = 'Matthew';
-        $test = $this->mustache->render('sub', $view);
-        $this->assertContains('<title>Profile of Matthew | Twitter</title>', $test);
-        $this->assertRegexp('/div class="content">\s+Here is Matthew\'s profile page\s+<\/div>/s', $test);
-        $this->assertNotContains('Default title', $test);
-        $this->assertNotContains('Default content of the page', $test);
-    }
-
-    /**
-     * @group issue-6
-     */
-    public function testPlaceholdersAreRenderedAsUnnamedSections()
-    {
-        $view = new stdClass;
-        $test = $this->mustache->render('super', $view);
-        $this->assertContains('<title>Default title</title>', $test);
-        $this->assertRegexp('/div class="content">\s+Default content of the page\s*<\/div>/s', $test);
-    }
-
-    /**
-     * @group issue-6
-     */
-    public function testOnlyPlaceholdersWithReplacementsReceiveSubstitutions()
-    {
-        $view = new stdClass;
-        $view->username = 'Matthew';
-        $test = $this->mustache->render('sub-incomplete', $view);
-        $this->assertContains('<title>Default title</title>', $test);
-        $this->assertRegexp('/div class="content">\s+Here is Matthew\'s profile page\s+<\/div>/s', $test);
-        $this->assertNotContains('Default content of the page', $test);
     }
 
     /**

@@ -230,14 +230,14 @@ class Mustache
      * @param  string $template Either a template string or a reference to a template
      * @return array Array of tokens
      */
-    public function tokenize($template)
+    public function tokenize($template, $cache = true)
     {
         $lexer = $this->getLexer();
         if (false !== strstr($template, '{{')) {
             return $lexer->compile($template);
         }
 
-        if (isset($this->cachedTemplates[$template])
+        if ($cache && isset($this->cachedTemplates[$template])
             && is_array($this->cachedTemplates[$template])
         ) {
             return $this->cachedTemplates[$template];
@@ -260,7 +260,9 @@ class Mustache
             ));
         }
 
-        $this->cachedTemplates[$template] = $templateOrTokens;
+        if ($cache) {
+            $this->cachedTemplates[$template] = $templateOrTokens;
+        }
         return $templateOrTokens;
     }
 

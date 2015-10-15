@@ -1,6 +1,6 @@
 {
-    "name": "phly/mustache",
-    "description": "PHP 5.3 Mustache Implementation",
+    "name": "frost/mustache",
+    "description": "FROST Mustache Implementation",
     "keywords": ["mustache"],
     "homepage": "http://wiki.github.com/weierophinney/phly_mustache/",
     "type": "library",

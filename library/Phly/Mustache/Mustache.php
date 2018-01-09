@@ -10,7 +10,6 @@
 
 namespace Phly\Mustache;
 
-use ArrayObject;
 use Traversable;
 
 /**
@@ -23,8 +22,11 @@ use Traversable;
 class Mustache
 {
     /**
-     * Cached file-based templates; contains template name/token pairs
-     * @var array
+     * Cached file-based templates.
+     * Key is template name. Value is array of [mixed 'value', int 'expiry'] where expiry is Unix epoch timestamp
+     * in seconds.
+     *
+     * @var array[]
      */
     protected $cachedTemplates = array();
 
@@ -51,6 +53,11 @@ class Mustache
      * @var string
      */
     protected $suffix = '.mustache';
+
+    /**
+     * @var int Maximum time to keep a template cache in memory, in seconds
+     */
+    protected $cacheMaxLifetimeSeconds = 300; // 5 minutes
 
     /**
      * Set lexer to use when tokenizing templates
@@ -214,7 +221,7 @@ class Mustache
                 $tokenizedPartials[$alias] = $this->tokenize($partialTemplate);
 
                 // Cache under this alias as well
-                $this->cachedTemplates[$alias] = $tokenizedPartials[$alias];
+                $this->addCache($alias, $tokenizedPartials[$alias]);
             }
         }
 
@@ -237,10 +244,8 @@ class Mustache
             return $lexer->compile($template);
         }
 
-        if ($cache && isset($this->cachedTemplates[$template])
-            && is_array($this->cachedTemplates[$template])
-        ) {
-            return $this->cachedTemplates[$template];
+        if ($cache && ($cachedValue = $this->getCached($template)) && is_array($cachedValue)) {
+            return $cachedValue;
         }
 
         $templateOrTokens = $this->fetchTemplate($template);
@@ -261,7 +266,7 @@ class Mustache
         }
 
         if ($cache) {
-            $this->cachedTemplates[$template] = $templateOrTokens;
+            $this->addCache($template, $templateOrTokens);
         }
         return $templateOrTokens;
     }
@@ -279,7 +284,14 @@ class Mustache
      */
     public function getAllTokens()
     {
-        return $this->cachedTemplates;
+        $validTokens = [];
+        foreach ($this->cachedTemplates as $template => $cacheEntry) {
+            if ($value = $this->getCached($template)) {
+                $validTokens[$template] = $value;
+            }
+        }
+
+        return $validTokens;
     }
 
     /**
@@ -293,7 +305,10 @@ class Mustache
      */
     public function restoreTokens($tokens)
     {
-        $this->cachedTemplates = $tokens;
+        foreach ($tokens as $template => $value) {
+            $this->addCache($template, $value);
+        }
+
         return $this;
     }
 
@@ -314,5 +329,34 @@ class Mustache
         }
 
         return $content;
+    }
+
+    /**
+     * @param string $template
+     * @return mixed|null
+     */
+    private function getCached($template)
+    {
+        if (isset($this->cachedTemplates[$template])) {
+            if ($this->cachedTemplates[$template]['expiry'] > new \DateTime()) {
+                return $this->cachedTemplates[$template]['value'];
+            }
+            // else expired -> tidy up
+            unset($this->cachedTemplates[$template]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param string    $template   Key used to cache on
+     * @param mixed     $value      Template or tokens
+     */
+    private function addCache($template, $value)
+    {
+        $this->cachedTemplates[$template] = [
+            'value' => $value,
+            'expiry' => (new \DateTime)->add(new \DateInterval("PT{$this->cacheMaxLifetimeSeconds}S")),
+        ];
     }
 }
